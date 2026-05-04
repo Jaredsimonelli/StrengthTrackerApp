@@ -1,0 +1,18 @@
+{
+  "name": "Two Day Strength Tracker",
+  "short_name": "Strength",
+  "description": "A simple local workout tracker for a two day strength plan.",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#f7f5ef",
+  "theme_color": "#1d5f63",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "assets/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
