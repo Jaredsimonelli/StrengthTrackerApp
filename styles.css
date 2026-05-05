@@ -31,7 +31,8 @@ body {
 }
 
 button,
-input {
+input,
+select {
   font: inherit;
 }
 
@@ -118,7 +119,8 @@ label {
   font-weight: 700;
 }
 
-input {
+input,
+select {
   width: 100%;
   min-height: 44px;
   border: 1px solid var(--line);
@@ -126,6 +128,27 @@ input {
   padding: 10px 11px;
   color: var(--ink);
   background: white;
+}
+
+select {
+  appearance: none;
+  padding-right: 36px;
+  background:
+    linear-gradient(45deg, transparent 50%, var(--green) 50%) calc(100% - 18px) 52% / 6px 6px no-repeat,
+    linear-gradient(135deg, var(--green) 50%, transparent 50%) calc(100% - 12px) 52% / 6px 6px no-repeat,
+    white;
+  font-weight: 800;
+}
+
+select:focus {
+  border-color: var(--gold);
+  outline: 3px solid rgba(240, 184, 90, 0.22);
+}
+
+select option {
+  background: white;
+  color: var(--ink);
+  font-weight: 800;
 }
 
 .segmented {
@@ -187,6 +210,53 @@ input {
   padding: 13px 14px;
   text-align: left;
   background: transparent;
+}
+
+.exercise-head-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+  align-items: start;
+}
+
+.exercise-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.exercise-actions button {
+  min-width: 34px;
+  min-height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: white;
+  color: var(--green);
+  font-weight: 900;
+}
+
+.exercise-actions button:disabled {
+  opacity: 0.35;
+}
+
+.exercise-actions button.delete-action {
+  color: var(--red);
+}
+
+.custom-card-actions {
+  display: grid;
+  grid-template-columns: repeat(3, 44px);
+  gap: 6px;
+  align-items: center;
+  justify-content: end;
+  padding: 0 12px 10px;
+}
+
+.custom-badge {
+  display: inline-block;
+  margin-left: 6px;
+  color: var(--green);
+  font-size: 0.72rem;
+  font-weight: 900;
 }
 
 .exercise-head small {
@@ -386,6 +456,171 @@ input {
   cursor: default;
   background: var(--green-2);
   color: var(--green);
+}
+
+.custom-tools {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 18px;
+  margin-bottom: 14px;
+}
+
+.custom-tools button,
+.custom-form-actions button {
+  min-height: 46px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--green);
+  font-weight: 900;
+}
+
+.custom-tools p {
+  grid-column: 1 / -1;
+  min-height: 1.2em;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.custom-form-card {
+  margin-bottom: 14px;
+}
+
+.custom-form-head {
+  min-height: auto;
+}
+
+.custom-form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  padding: 0 14px 14px;
+}
+
+.custom-name-field {
+  grid-column: 1 / -1;
+}
+
+.custom-set-builder {
+  display: grid;
+  gap: 10px;
+  grid-column: 1 / -1;
+}
+
+.custom-set-builder-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.custom-set-builder-head strong {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.custom-set-builder-head button {
+  min-height: 36px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0 12px;
+  background: var(--panel);
+  color: var(--green);
+  font-weight: 900;
+}
+
+.custom-set-rows {
+  display: grid;
+  gap: 8px;
+}
+
+.custom-set-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 92px 44px;
+  gap: 8px;
+  align-items: end;
+  padding-left: 10px;
+}
+
+.custom-set-row::before {
+  content: "";
+  position: absolute;
+  top: 22px;
+  bottom: 7px;
+  left: 0;
+  width: 3px;
+  border-radius: 999px;
+}
+
+.custom-set-row button {
+  min-height: 44px;
+  border: 1px solid rgba(186, 81, 71, 0.26);
+  border-radius: 8px;
+  background: white;
+  color: var(--red);
+  font-size: 1.1rem;
+  font-weight: 900;
+}
+
+.custom-form-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  padding: 0 14px 14px;
+}
+
+#saveCustomButton {
+  border-color: var(--gold);
+  background: var(--gold);
+  color: #27231c;
+}
+
+.confirm-dialog {
+  width: min(420px, calc(100% - 32px));
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0;
+  background: var(--panel);
+  color: var(--ink);
+  box-shadow: var(--shadow);
+}
+
+.confirm-dialog::backdrop {
+  background: rgba(30, 36, 35, 0.34);
+}
+
+.confirm-dialog form {
+  display: grid;
+  gap: 12px;
+  padding: 18px;
+}
+
+.confirm-dialog p {
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.dialog-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.dialog-actions button {
+  min-height: 44px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: white;
+  color: var(--green);
+  font-weight: 900;
+}
+
+#confirmDeleteButton {
+  border-color: rgba(186, 81, 71, 0.32);
+  color: var(--red);
 }
 
 .plain-section {

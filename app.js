@@ -23,6 +23,7 @@ const STORAGE_KEY = "twoDayStrengthTracker.data";
 const LEGACY_STORAGE_KEYS = Array.from({ length: 14 }, (_, index) => `twoDayStrengthTracker.v${14 - index}`);
 const state = loadState();
 let deferredInstallPrompt = null;
+let pendingDeleteCustomId = null;
 
 const els = {
   week: document.querySelector("#weekInput"),
@@ -36,6 +37,19 @@ const els = {
   complete: document.querySelector("#completeCount"),
   submit: document.querySelector("#submitWorkoutButton"),
   history: document.querySelector("#historyList"),
+  addCustom: document.querySelector("#addCustomButton"),
+  copyPrevious: document.querySelector("#copyPreviousButton"),
+  customStatus: document.querySelector("#customStatus"),
+  customForm: document.querySelector("#customFormCard"),
+  customCategory: document.querySelector("#customCategory"),
+  customName: document.querySelector("#customName"),
+  customSetRows: document.querySelector("#customSetRows"),
+  addCustomSet: document.querySelector("#addCustomSetButton"),
+  saveCustom: document.querySelector("#saveCustomButton"),
+  cancelCustom: document.querySelector("#cancelCustomButton"),
+  deleteDialog: document.querySelector("#deleteCustomDialog"),
+  deleteMessage: document.querySelector("#deleteCustomMessage"),
+  confirmDelete: document.querySelector("#confirmDeleteButton"),
   exportData: document.querySelector("#exportDataButton"),
   importData: document.querySelector("#importDataButton"),
   clearData: document.querySelector("#clearDataButton"),
@@ -87,7 +101,8 @@ function defaultState() {
     activeWeek: 1,
     startedOn: today.toISOString().slice(0, 10),
     sessions: {},
-    collapsed: {}
+    collapsed: {},
+    customExercises: {}
   };
 }
 
@@ -99,7 +114,8 @@ function normalizeState(saved) {
     activeDay: Number(saved.activeDay) === 2 ? 2 : 1,
     activeWeek: Math.max(1, Number(saved.activeWeek || fallback.activeWeek)),
     sessions: saved.sessions && typeof saved.sessions === "object" ? saved.sessions : {},
-    collapsed: saved.collapsed && typeof saved.collapsed === "object" ? saved.collapsed : {}
+    collapsed: saved.collapsed && typeof saved.collapsed === "object" ? saved.collapsed : {},
+    customExercises: saved.customExercises && typeof saved.customExercises === "object" ? saved.customExercises : {}
   };
 
   Object.values(next.sessions).forEach((session) => {
@@ -107,6 +123,15 @@ function normalizeState(saved) {
     session.sets ||= {};
     session.validation ||= {};
     session.validationFields ||= {};
+  });
+
+  Object.keys(next.customExercises).forEach((key) => {
+    if (!Array.isArray(next.customExercises[key])) {
+      next.customExercises[key] = [];
+      return;
+    }
+
+    next.customExercises[key] = next.customExercises[key].map((item, index) => normalizeCustomExercise(item, index));
   });
 
   return next;
@@ -121,6 +146,89 @@ function replaceState(nextState) {
   Object.assign(state, normalizeState(nextState));
   saveState();
   render();
+}
+
+function makeId(prefix = "custom") {
+  if (window.crypto && window.crypto.randomUUID) {
+    return `${prefix}:${window.crypto.randomUUID()}`;
+  }
+  return `${prefix}:${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function normalizeCustomExercise(item = {}, index = 0) {
+  const setRows = normalizeCustomSetRows(item.setRows || rowsFromBlocks(item.blocks) || [
+    { type: item.blocks?.[0]?.type || "work", reps: item.blocks?.[0]?.reps || item.reps || 5 }
+  ]);
+  return {
+    id: item.id || makeId(),
+    name: String(item.name || "Custom lift").trim() || "Custom lift",
+    category: item.category === "lift" ? "lift" : "accessory",
+    sourceId: item.sourceId || null,
+    createdAt: item.createdAt || new Date().toISOString(),
+    deletedAt: item.deletedAt || null,
+    order: Number.isFinite(Number(item.order)) ? Number(item.order) : index,
+    custom: true,
+    setRows,
+    blocks: blocksFromSetRows(setRows)
+  };
+}
+
+function rowsFromBlocks(blocks) {
+  if (!Array.isArray(blocks) || !blocks.length) return null;
+  return blocks.flatMap((block) =>
+    Array.from({ length: Math.max(1, Number(block.sets || 1)) }, () => ({
+      id: makeId("set"),
+      type: block.type === "warmup" ? "warmup" : "work",
+      reps: Math.max(1, Number(block.reps || 5))
+    }))
+  );
+}
+
+function normalizeCustomSetRows(rows) {
+  return rows.map((row) => ({
+    id: row.id || makeId("set"),
+    type: row.type === "warmup" ? "warmup" : "work",
+    reps: Math.max(1, Number(row.reps || 1))
+  }));
+}
+
+function blocksFromSetRows(rows) {
+  return normalizeCustomSetRows(rows).reduce((blocks, row) => {
+    const last = blocks[blocks.length - 1];
+    if (last && last.type === row.type && last.reps === row.reps) {
+      last.sets += 1;
+    } else {
+      blocks.push({ type: row.type, reps: row.reps, sets: 1 });
+    }
+    return blocks;
+  }, []);
+}
+
+function customExerciseKey(week = state.activeWeek, day = state.activeDay) {
+  return sessionKey(week, day);
+}
+
+function customExercisesFor(week = state.activeWeek, day = state.activeDay) {
+  const key = customExerciseKey(week, day);
+  state.customExercises[key] ||= [];
+  state.customExercises[key] = state.customExercises[key]
+    .map((item, index) => normalizeCustomExercise(item, index))
+    .sort((a, b) => a.order - b.order);
+  return state.customExercises[key];
+}
+
+function activeCustomExercises(week = state.activeWeek, day = state.activeDay) {
+  return customExercisesFor(week, day).filter((item) => !item.deletedAt);
+}
+
+function exercisesForDay(week = state.activeWeek, day = state.activeDay) {
+  return [...PLAN[day], ...activeCustomExercises(week, day)];
+}
+
+function normalizeCustomOrder(list) {
+  list.filter((item) => !item.deletedAt).forEach((item, index) => {
+    item.order = index;
+  });
 }
 
 function sessionKey(week = state.activeWeek, day = state.activeDay) {
@@ -180,6 +288,12 @@ function targetSets(baseSets, type, week = state.activeWeek) {
 }
 
 function prescription(ex) {
+  if (ex.custom) {
+    return blocksFromSetRows(ex.setRows).map((block) =>
+      `${block.sets}x${block.reps} ${block.type === "warmup" ? "warm up set" : "working set"}`
+    ).join(" · ");
+  }
+
   return ex.blocks.map((block) => {
     const sets = targetSets(block.sets, block.type);
     const reps = ex.id === "kang-squat"
@@ -190,6 +304,19 @@ function prescription(ex) {
 }
 
 function expandedSets(ex) {
+  if (ex.custom) {
+    const counters = { warmup: 0, work: 0 };
+    return normalizeCustomSetRows(ex.setRows).map((row) => {
+      counters[row.type] += 1;
+      return {
+        id: row.id,
+        label: `${row.type === "warmup" ? "Warm up set" : "Working set"} ${counters[row.type]}`,
+        type: row.type,
+        reps: row.reps
+      };
+    });
+  }
+
   return ex.blocks.flatMap((block) => {
     const count = targetSets(block.sets, block.type);
     return Array.from({ length: count }, (_, i) => ({
@@ -211,6 +338,7 @@ function getSet(session, exerciseId, setId) {
 
 function previousWorkingSets(exerciseId, beforeWeek = state.activeWeek, beforeDay = state.activeDay, options = {}) {
   const includeDeloads = Boolean(options.includeDeloads);
+  const exerciseIds = Array.isArray(exerciseId) ? exerciseId : [exerciseId];
   return Object.values(state.sessions)
     .filter((session) => {
       const isBefore = session.week < beforeWeek || (session.week === beforeWeek && session.day < beforeDay);
@@ -218,9 +346,9 @@ function previousWorkingSets(exerciseId, beforeWeek = state.activeWeek, beforeDa
       return session.submitted && isBefore && (includeDeloads || !isDeload);
     })
     .sort((a, b) => b.week - a.week || b.day - a.day || new Date(b.date) - new Date(a.date))
-    .flatMap((session) => Object.entries(session.sets[exerciseId] || {})
+    .flatMap((session) => exerciseIds.flatMap((id) => Object.entries(session.sets[id] || {})
       .filter(([setId, set]) => setId.startsWith("work") && Number(set.weight) > 0 && Number(set.reps) > 0)
-      .map(([, set]) => ({ weight: Number(set.weight), reps: Number(set.reps), week: session.week, day: session.day })));
+      .map(([, set]) => ({ weight: Number(set.weight), reps: Number(set.reps), week: session.week, day: session.day }))));
 }
 
 function estimateOneRepMax(weight, reps) {
@@ -234,14 +362,16 @@ function roundToIncrement(value, increment = 5) {
 
 function recommendation(ex) {
   const currentPhase = weekPhase(state.activeWeek);
-  const previous = previousWorkingSets(ex.id, state.activeWeek, state.activeDay, {
+  const previous = previousWorkingSets([ex.id, ex.sourceId].filter(Boolean), state.activeWeek, state.activeDay, {
     includeDeloads: currentPhase.name === "Deload"
   });
   if (!previous.length) return "";
 
   const recent = previous.slice(0, 6);
   const target = firstWorkingTarget(ex);
-  const increment = ex.category === "lower" ? 5 : 2.5;
+  if (!target.reps) return "";
+  const isHeavyLift = ex.category === "lower" || ex.category === "lift";
+  const increment = isHeavyLift ? 5 : 2.5;
   const recentAvgWeight = recent.reduce((sum, set) => sum + set.weight, 0) / recent.length;
   const best = recent.reduce((max, set) => Math.max(max, estimateOneRepMax(set.weight, set.reps)), 0);
   let suggested = best / (1 + target.reps / 30);
@@ -249,7 +379,7 @@ function recommendation(ex) {
   if (currentPhase.name === "Deload") {
     suggested = recentAvgWeight * 0.9;
   } else {
-    const cap = ex.category === "lower" ? 1.05 : 1.025;
+    const cap = isHeavyLift ? 1.05 : 1.025;
     suggested = Math.min(suggested, recentAvgWeight * cap);
   }
 
@@ -258,14 +388,19 @@ function recommendation(ex) {
 
 function firstWorkingTarget(ex) {
   const block = ex.blocks.find((item) => item.type === "work");
-  return { sets: targetSets(block.sets, "work"), reps: exerciseTargetReps(ex.id, block.reps) };
+  if (!block) return { sets: 0, reps: 0 };
+  return {
+    sets: ex.custom ? block.sets : targetSets(block.sets, "work"),
+    reps: ex.custom ? block.reps : exerciseTargetReps(ex.id, block.reps)
+  };
 }
 
 function render() {
   saveState();
   const phase = weekPhase(state.activeWeek);
-  const workout = PLAN[state.activeDay];
+  const workout = exercisesForDay();
   const session = activeSession();
+  const customList = activeCustomExercises();
 
   els.week.value = state.activeWeek;
   els.day1.classList.toggle("active", state.activeDay === 1);
@@ -274,10 +409,22 @@ function render() {
   els.phase.textContent = `Week ${state.activeWeek} · ${phase.name}`;
   els.note.textContent = phase.note;
   els.list.textContent = "";
+  els.copyPrevious.disabled = state.activeWeek <= 1 || !activeCustomExercises(state.activeWeek - 1, state.activeDay).length;
+  if (!els.customStatus.textContent) {
+    els.customStatus.textContent = "";
+  }
 
   workout.forEach((ex) => {
     const node = els.template.content.firstElementChild.cloneNode(true);
-    node.querySelector(".exercise-name").textContent = ex.name;
+    node.classList.toggle("custom-exercise-card", Boolean(ex.custom));
+    const name = node.querySelector(".exercise-name");
+    name.textContent = ex.name;
+    if (ex.custom) {
+      const badge = document.createElement("span");
+      badge.className = "custom-badge";
+      badge.textContent = ex.category === "lift" ? "Lift" : "Accessory";
+      name.append(badge);
+    }
     node.querySelector(".exercise-prescription").textContent = prescription(ex);
     const recommendedWeight = recommendation(ex);
     const head = node.querySelector(".exercise-head");
@@ -288,6 +435,18 @@ function render() {
       state.collapsed[collapsedKey] = !state.collapsed[collapsedKey];
       render();
     });
+
+    if (ex.custom) {
+      const actions = document.createElement("div");
+      actions.className = "exercise-actions custom-card-actions";
+      const index = customList.findIndex((item) => item.id === ex.id);
+      actions.append(
+        customActionButton("↑", "Move lift up", () => moveCustomExercise(ex.id, -1), index <= 0),
+        customActionButton("↓", "Move lift down", () => moveCustomExercise(ex.id, 1), index === customList.length - 1),
+        customActionButton("×", "Delete lift", () => openDeleteCustomDialog(ex), false, "delete-action")
+      );
+      node.insertBefore(actions, sets);
+    }
 
     expandedSets(ex).forEach((target) => {
       const saved = getSet(session, ex.id, target.id);
@@ -392,12 +551,8 @@ function render() {
 
 function renderSummary() {
   const session = activeSession();
-  let listedSets = 0;
-  Object.values(session.sets).forEach((exerciseSets) => {
-    Object.values(exerciseSets).forEach((set) => {
-      listedSets += 1;
-    });
-  });
+  const listedSets = exercisesForDay(session.week, session.day)
+    .reduce((total, ex) => total + expandedSets(ex).length, 0);
   els.complete.textContent = listedSets;
   els.prs.textContent = countSubmittedSessions();
 
@@ -456,10 +611,12 @@ function renderHistory() {
 }
 
 function hasRecommendationData(session) {
-  return Object.values(session.sets).some((sets) =>
-    Object.entries(sets).some(([setId, set]) =>
-      setId.startsWith("work") && Number(set.weight) > 0 && Number(set.reps) > 0
-    )
+  return exercisesForDay(session.week, session.day).some((ex) =>
+    expandedSets(ex).some((target) => {
+      if (target.type !== "work") return false;
+      const set = session.sets[ex.id]?.[target.id];
+      return Number(set?.weight) > 0 && Number(set?.reps) > 0;
+    })
   );
 }
 
@@ -470,8 +627,196 @@ function clearValidation(session, validationKey, set) {
   }
 }
 
+function customActionButton(text, label, onClick, disabled = false, className = "") {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.textContent = text;
+  button.title = label;
+  button.ariaLabel = label;
+  button.disabled = disabled;
+  button.className = className;
+  button.addEventListener("click", onClick);
+  return button;
+}
+
+function showCustomForm() {
+  els.customForm.hidden = false;
+  els.customStatus.textContent = "";
+  els.customCategory.value = "accessory";
+  els.customName.value = "";
+  renderCustomSetFormRows([
+    { type: "work", reps: 5 },
+    { type: "work", reps: 5 },
+    { type: "work", reps: 5 }
+  ]);
+  els.customName.focus();
+}
+
+function hideCustomForm() {
+  els.customForm.hidden = true;
+}
+
+function addCustomExercise() {
+  const name = els.customName.value.trim();
+  const setRows = readCustomSetFormRows();
+  if (!name) {
+    els.customStatus.textContent = "Lift name is required.";
+    els.customName.focus();
+    return;
+  }
+  if (!setRows.length) {
+    els.customStatus.textContent = "Add at least one set.";
+    return;
+  }
+
+  const list = customExercisesFor();
+  const visibleCount = list.filter((item) => !item.deletedAt).length;
+  list.push(normalizeCustomExercise({
+    id: makeId(),
+    name,
+    category: els.customCategory.value,
+    setRows,
+    order: visibleCount
+  }, list.length));
+  normalizeCustomOrder(list);
+  hideCustomForm();
+  els.customStatus.textContent = `${name} added to Week ${state.activeWeek}, Day ${state.activeDay}.`;
+  saveState();
+  render();
+}
+
+function renderCustomSetFormRows(rows) {
+  els.customSetRows.textContent = "";
+  normalizeCustomSetRows(rows).forEach((row, index) => {
+    const editor = document.createElement("div");
+    editor.className = `custom-set-row ${row.type === "warmup" ? "set-row--warmup" : "set-row--work"}`;
+
+    const typeLabel = document.createElement("label");
+    typeLabel.textContent = `Set ${index + 1}`;
+    const typeSelect = document.createElement("select");
+    typeSelect.className = "custom-row-type";
+    typeSelect.innerHTML = `
+      <option value="work">Working set</option>
+      <option value="warmup">Warm up set</option>
+    `;
+    typeSelect.value = row.type;
+    typeSelect.addEventListener("change", () => {
+      editor.classList.toggle("set-row--warmup", typeSelect.value === "warmup");
+      editor.classList.toggle("set-row--work", typeSelect.value !== "warmup");
+    });
+    typeLabel.append(typeSelect);
+
+    const repsLabel = document.createElement("label");
+    repsLabel.textContent = "Reps";
+    const repsInput = document.createElement("input");
+    repsInput.className = "custom-row-reps";
+    repsInput.type = "number";
+    repsInput.min = "1";
+    repsInput.max = "100";
+    repsInput.step = "1";
+    repsInput.inputMode = "numeric";
+    repsInput.value = row.reps;
+    repsLabel.append(repsInput);
+
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.textContent = "×";
+    remove.ariaLabel = `Remove set ${index + 1}`;
+    remove.addEventListener("click", () => {
+      editor.remove();
+      renumberCustomSetRows();
+    });
+
+    editor.append(typeLabel, repsLabel, remove);
+    els.customSetRows.append(editor);
+  });
+}
+
+function readCustomSetFormRows() {
+  return Array.from(els.customSetRows.querySelectorAll(".custom-set-row")).map((row) => ({
+    type: row.querySelector(".custom-row-type").value,
+    reps: Math.max(1, Number(row.querySelector(".custom-row-reps").value || 1))
+  }));
+}
+
+function renumberCustomSetRows() {
+  Array.from(els.customSetRows.querySelectorAll(".custom-set-row label:first-child")).forEach((label, index) => {
+    label.firstChild.textContent = `Set ${index + 1}`;
+  });
+}
+
+function addCustomSetRow() {
+  const rows = readCustomSetFormRows();
+  rows.push({ type: "work", reps: rows[rows.length - 1]?.reps || 5 });
+  renderCustomSetFormRows(rows);
+}
+
+function moveCustomExercise(id, direction) {
+  const list = customExercisesFor();
+  const visible = list.filter((item) => !item.deletedAt);
+  const index = visible.findIndex((item) => item.id === id);
+  const nextIndex = index + direction;
+  if (index < 0 || nextIndex < 0 || nextIndex >= visible.length) return;
+  const currentOrder = visible[index].order;
+  visible[index].order = visible[nextIndex].order;
+  visible[nextIndex].order = currentOrder;
+  normalizeCustomOrder(list.sort((a, b) => a.order - b.order));
+  saveState();
+  render();
+}
+
+function openDeleteCustomDialog(ex) {
+  pendingDeleteCustomId = ex.id;
+  els.deleteMessage.textContent = `This removes ${ex.name} from Week ${state.activeWeek}, Day ${state.activeDay} only.`;
+  els.deleteDialog.showModal();
+}
+
+function deletePendingCustomExercise() {
+  if (!pendingDeleteCustomId) return;
+  const list = customExercisesFor();
+  const item = list.find((custom) => custom.id === pendingDeleteCustomId);
+  if (item) {
+    item.deletedAt = new Date().toISOString();
+    delete activeSession().sets[item.id];
+    normalizeCustomOrder(list);
+    els.customStatus.textContent = `${item.name} removed from this week only.`;
+  }
+  pendingDeleteCustomId = null;
+  saveState();
+  render();
+}
+
+function copyPreviousWeekCustomExercises() {
+  if (state.activeWeek <= 1) {
+    els.customStatus.textContent = "There is no previous week to copy.";
+    return;
+  }
+
+  const previous = activeCustomExercises(state.activeWeek - 1, state.activeDay);
+  if (!previous.length) {
+    els.customStatus.textContent = `No custom lifts found for Week ${state.activeWeek - 1}, Day ${state.activeDay}.`;
+    return;
+  }
+
+  const list = customExercisesFor();
+  const visibleCount = list.filter((item) => !item.deletedAt).length;
+  const copied = previous.map((item, index) => normalizeCustomExercise({
+    ...item,
+    id: makeId(),
+    sourceId: item.sourceId || item.id,
+    createdAt: new Date().toISOString(),
+    deletedAt: null,
+    order: visibleCount + index
+  }, list.length + index));
+  list.push(...copied);
+  normalizeCustomOrder(list);
+  els.customStatus.textContent = `${copied.length} custom ${copied.length === 1 ? "lift" : "lifts"} copied from Week ${state.activeWeek - 1}.`;
+  saveState();
+  render();
+}
+
 function validateSession(session) {
-  const workout = PLAN[session.day];
+  const workout = exercisesForDay(session.week, session.day);
   session.validation = {};
   session.validationFields = {};
   let firstWorkingSet = null;
@@ -604,6 +949,16 @@ els.day2.addEventListener("click", () => {
   render();
 });
 els.submit.addEventListener("click", submitWorkout);
+els.addCustom.addEventListener("click", showCustomForm);
+els.cancelCustom.addEventListener("click", hideCustomForm);
+els.saveCustom.addEventListener("click", addCustomExercise);
+els.addCustomSet.addEventListener("click", addCustomSetRow);
+els.copyPrevious.addEventListener("click", copyPreviousWeekCustomExercises);
+els.confirmDelete.addEventListener("click", (event) => {
+  event.preventDefault();
+  els.deleteDialog.close();
+  deletePendingCustomExercise();
+});
 els.exportData.addEventListener("click", exportData);
 els.importData.addEventListener("click", () => {
   els.importFile.click();

@@ -40,6 +40,45 @@
 
       <section id="exerciseList" class="exercise-list" aria-live="polite"></section>
 
+      <section class="custom-tools" aria-label="Custom lift tools">
+        <button id="addCustomButton" type="button">+ Add Lift</button>
+        <button id="copyPreviousButton" type="button">Copy Last Week</button>
+        <p id="customStatus" aria-live="polite"></p>
+      </section>
+
+      <section id="customFormCard" class="exercise-card custom-form-card" hidden>
+        <div class="exercise-head custom-form-head">
+          <span>
+            <strong>Add lift</strong>
+            <small>Saved to this week and day only</small>
+          </span>
+        </div>
+        <div class="custom-form-grid">
+          <label>
+            Type
+            <select id="customCategory">
+              <option value="accessory">Accessory</option>
+              <option value="lift">Lift</option>
+            </select>
+          </label>
+          <label class="custom-name-field">
+            Lift name
+            <input id="customName" type="text" placeholder="Incline dumbbell press">
+          </label>
+          <div class="custom-set-builder">
+            <div class="custom-set-builder-head">
+              <strong>Planned sets</strong>
+              <button id="addCustomSetButton" type="button">+ Set</button>
+            </div>
+            <div id="customSetRows" class="custom-set-rows"></div>
+          </div>
+        </div>
+        <div class="custom-form-actions">
+          <button id="saveCustomButton" type="button">Add Lift</button>
+          <button id="cancelCustomButton" type="button">Cancel</button>
+        </div>
+      </section>
+
       <section class="summary-grid">
         <div>
           <span id="prCount">0</span>
@@ -83,6 +122,17 @@
         <div class="sets"></div>
       </article>
     </template>
+
+    <dialog id="deleteCustomDialog" class="confirm-dialog">
+      <form method="dialog">
+        <h2>Delete lift?</h2>
+        <p id="deleteCustomMessage">This removes the lift from this week only.</p>
+        <div class="dialog-actions">
+          <button id="cancelDeleteButton" value="cancel" type="submit">Cancel</button>
+          <button id="confirmDeleteButton" value="delete" type="submit">Delete</button>
+        </div>
+      </form>
+    </dialog>
 
     <script src="app.js"></script>
   </body>
