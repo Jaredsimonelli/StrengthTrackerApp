@@ -1,6 +1,6 @@
-# Two Day Strength Tracker
+# Strength Tracker
 
-A simple offline-first workout tracker for the two-session weekly plan.
+A simple offline-first workout tracker for flexible strength plans.
 
 ## Run on Mac
 

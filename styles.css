@@ -191,26 +191,71 @@ select option {
   font-weight: 800;
 }
 
-.segmented {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
+.day-tabs {
+  position: relative;
+  display: flex;
+  gap: 0;
+  align-items: stretch;
   min-height: 44px;
-  overflow: hidden;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--panel);
+  scroll-padding-inline: 12px;
+  scroll-snap-type: x proximity;
+  scrollbar-width: none;
+  transition: box-shadow 160ms ease;
 }
 
-.segmented button {
+.day-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.day-tabs button {
+  flex: 1 0 clamp(92px, 28vw, 132px);
+  min-height: 44px;
   border: 0;
   background: transparent;
   color: var(--muted);
   font-weight: 800;
+  scroll-snap-align: center;
+  white-space: nowrap;
 }
 
-.segmented button.active {
+.day-tabs button + button {
+  border-left: 1px solid var(--line);
+}
+
+.day-tabs button.active {
   background: var(--green);
   color: white;
+}
+
+.day-tabs .add-day-button {
+  flex: 0 0 48px;
+  color: var(--green);
+  font-size: 1.3rem;
+  font-weight: 900;
+}
+
+.day-tabs .add-day-button:disabled {
+  color: #b8bfbb;
+  cursor: default;
+}
+
+.day-tabs.has-overflow-left {
+  box-shadow: inset 14px 0 12px -12px rgba(23, 34, 32, 0.28);
+}
+
+.day-tabs.has-overflow-right {
+  box-shadow: inset -14px 0 12px -12px rgba(23, 34, 32, 0.28);
+}
+
+.day-tabs.has-overflow-left.has-overflow-right {
+  box-shadow:
+    inset 14px 0 12px -12px rgba(23, 34, 32, 0.28),
+    inset -14px 0 12px -12px rgba(23, 34, 32, 0.28);
 }
 
 .today-panel {
@@ -232,6 +277,21 @@ select option {
 .exercise-list {
   display: grid;
   gap: 10px;
+}
+
+.empty-day {
+  display: grid;
+  gap: 6px;
+  padding: 16px;
+  border: 1px dashed rgba(29, 95, 99, 0.28);
+  border-radius: 8px;
+  background: rgba(224, 238, 238, 0.42);
+}
+
+.empty-day p {
+  color: var(--muted);
+  font-size: 0.88rem;
+  line-height: 1.4;
 }
 
 .exercise-card {
@@ -549,6 +609,15 @@ select option {
   background: var(--panel);
   color: var(--green);
   font-weight: 900;
+}
+
+#copyScheduleButton {
+  grid-column: 1 / -1;
+}
+
+#removeDayButton {
+  border-color: rgba(186, 81, 71, 0.28);
+  color: var(--red);
 }
 
 .custom-tools p {
@@ -882,7 +951,7 @@ select option {
     font-size: 0.72rem;
   }
 
-  .segmented button {
+  .day-tabs button {
     min-height: 44px;
   }
 

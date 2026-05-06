@@ -31,8 +31,7 @@ const els = {
   weekLabel: document.querySelector("#weekLabel"),
   previousWeek: document.querySelector("#previousWeekButton"),
   nextWeek: document.querySelector("#nextWeekButton"),
-  day1: document.querySelector("#day1Button"),
-  day2: document.querySelector("#day2Button"),
+  dayTabs: document.querySelector("#dayTabs"),
   title: document.querySelector("#workoutTitle"),
   phase: document.querySelector("#phaseLabel"),
   note: document.querySelector("#phaseNote"),
@@ -42,7 +41,9 @@ const els = {
   submit: document.querySelector("#submitWorkoutButton"),
   history: document.querySelector("#historyList"),
   addCustom: document.querySelector("#addCustomButton"),
+  removeDay: document.querySelector("#removeDayButton"),
   copyPrevious: document.querySelector("#copyPreviousButton"),
+  copySchedule: document.querySelector("#copyScheduleButton"),
   customStatus: document.querySelector("#customStatus"),
   customForm: document.querySelector("#customFormCard"),
   customCategory: document.querySelector("#customCategory"),
@@ -54,6 +55,9 @@ const els = {
   deleteDialog: document.querySelector("#deleteCustomDialog"),
   deleteMessage: document.querySelector("#deleteCustomMessage"),
   confirmDelete: document.querySelector("#confirmDeleteButton"),
+  removeDayDialog: document.querySelector("#removeDayDialog"),
+  removeDayMessage: document.querySelector("#removeDayMessage"),
+  confirmRemoveDay: document.querySelector("#confirmRemoveDayButton"),
   exportData: document.querySelector("#exportDataButton"),
   importData: document.querySelector("#importDataButton"),
   clearData: document.querySelector("#clearDataButton"),
@@ -107,7 +111,8 @@ function defaultState() {
     collapsed: {},
     customExercises: {},
     dayLayouts: {},
-    defaultDayLayouts: {}
+    defaultDayLayouts: {},
+    weekDays: {}
   };
 }
 
@@ -116,13 +121,14 @@ function normalizeState(saved) {
   const next = {
     ...fallback,
     ...saved,
-    activeDay: Number(saved.activeDay) === 2 ? 2 : 1,
+    activeDay: normalizeDayNumber(saved.activeDay) || 1,
     activeWeek: Math.max(1, Number(saved.activeWeek || fallback.activeWeek)),
     sessions: saved.sessions && typeof saved.sessions === "object" ? saved.sessions : {},
     collapsed: saved.collapsed && typeof saved.collapsed === "object" ? saved.collapsed : {},
     customExercises: saved.customExercises && typeof saved.customExercises === "object" ? saved.customExercises : {},
     dayLayouts: saved.dayLayouts && typeof saved.dayLayouts === "object" ? saved.dayLayouts : {},
-    defaultDayLayouts: saved.defaultDayLayouts && typeof saved.defaultDayLayouts === "object" ? saved.defaultDayLayouts : {}
+    defaultDayLayouts: saved.defaultDayLayouts && typeof saved.defaultDayLayouts === "object" ? saved.defaultDayLayouts : {},
+    weekDays: saved.weekDays && typeof saved.weekDays === "object" ? saved.weekDays : {}
   };
 
   Object.values(next.sessions).forEach((session) => {
@@ -149,7 +155,33 @@ function normalizeState(saved) {
     next.defaultDayLayouts[key] = normalizeLayout(next.defaultDayLayouts[key]);
   });
 
+  Object.keys(next.weekDays).forEach((week) => {
+    next.weekDays[week] = normalizeWeekDays(next.weekDays[week]);
+  });
+
+  if (!getDaysForWeekValue(next, next.activeWeek).includes(next.activeDay)) {
+    next.activeDay = getDaysForWeekValue(next, next.activeWeek)[0];
+  }
+
   return next;
+}
+
+function normalizeDayNumber(value) {
+  const day = Number(value);
+  return Number.isInteger(day) && day >= 1 && day <= 7 ? day : null;
+}
+
+function normalizeWeekDays(days) {
+  const normalized = Array.from(new Set((Array.isArray(days) ? days : [])
+    .map(normalizeDayNumber)
+    .filter(Boolean)))
+    .sort((a, b) => a - b)
+    .slice(0, 7);
+  return normalized.length ? normalized : [1, 2];
+}
+
+function getDaysForWeekValue(source, week) {
+  return normalizeWeekDays(source.weekDays?.[String(week)] || [1, 2]);
 }
 
 function normalizeLayout(layout) {
@@ -243,6 +275,78 @@ function activeCustomExercises(week = state.activeWeek, day = state.activeDay) {
   return customExercisesFor(week, day).filter((item) => !item.deletedAt);
 }
 
+function getDaysForWeek(week = state.activeWeek) {
+  return getDaysForWeekValue(state, week);
+}
+
+function setDaysForWeek(week, days) {
+  state.weekDays ||= {};
+  state.weekDays[String(week)] = normalizeWeekDays(days);
+}
+
+function ensureActiveDayForWeek() {
+  const days = getDaysForWeek();
+  if (!days.includes(state.activeDay)) {
+    state.activeDay = days[0];
+    activeEditExerciseId = null;
+  }
+}
+
+function addDayToWeek() {
+  const days = getDaysForWeek();
+  if (days.length >= 7) {
+    els.customStatus.textContent = "Maximum of 7 days per week.";
+    return;
+  }
+
+  const nextDay = Array.from({ length: 7 }, (_, index) => index + 1).find((day) => !days.includes(day));
+  setDaysForWeek(state.activeWeek, [...days, nextDay]);
+  state.activeDay = nextDay;
+  activeEditExerciseId = null;
+  els.customStatus.textContent = `Day ${nextDay} added to Week ${state.activeWeek}.`;
+  saveState();
+  render();
+}
+
+function canRemoveActiveDay() {
+  return state.activeDay > 2 && getDaysForWeek().includes(state.activeDay);
+}
+
+function openRemoveDayDialog() {
+  if (!canRemoveActiveDay()) {
+    els.customStatus.textContent = "Day 1 and Day 2 stay in every week.";
+    return;
+  }
+
+  els.removeDayMessage.textContent =
+    `Remove Day ${state.activeDay} from Week ${state.activeWeek}? This deletes that day's lifts, layout changes, and entered weights for this week only.`;
+  els.removeDayDialog.showModal();
+}
+
+function removeActiveDay() {
+  if (!canRemoveActiveDay()) return;
+
+  const removedDay = state.activeDay;
+  const removedKey = sessionKey(state.activeWeek, removedDay);
+  const remainingDays = getDaysForWeek().filter((day) => day !== removedDay);
+
+  setDaysForWeek(state.activeWeek, remainingDays);
+  delete state.sessions[removedKey];
+  delete state.customExercises[removedKey];
+  delete state.dayLayouts[removedKey];
+  Object.keys(state.collapsed || {}).forEach((key) => {
+    if (key.startsWith(`${removedKey}-`)) {
+      delete state.collapsed[key];
+    }
+  });
+
+  state.activeDay = remainingDays.includes(removedDay - 1) ? removedDay - 1 : remainingDays[0];
+  activeEditExerciseId = null;
+  saveState();
+  render();
+  els.customStatus.textContent = `Day ${removedDay} removed from Week ${state.activeWeek}.`;
+}
+
 function defaultLayoutForDay(day = state.activeDay) {
   const key = `d${day}`;
   state.defaultDayLayouts ||= {};
@@ -267,7 +371,7 @@ function exerciseOrderKey(ex) {
 }
 
 function baseExercisesForDay(week = state.activeWeek, day = state.activeDay) {
-  return [...PLAN[day], ...activeCustomExercises(week, day)];
+  return [...(PLAN[day] || []), ...activeCustomExercises(week, day)];
 }
 
 function exercisesForDay(week = state.activeWeek, day = state.activeDay) {
@@ -452,6 +556,7 @@ function firstWorkingTarget(ex) {
 }
 
 function render() {
+  ensureActiveDayForWeek();
   const phase = weekPhase(state.activeWeek);
   const workout = exercisesForDay();
   saveState();
@@ -462,15 +567,30 @@ function render() {
 
   els.weekLabel.textContent = state.activeWeek;
   els.previousWeek.disabled = state.activeWeek <= 1;
-  els.day1.classList.toggle("active", state.activeDay === 1);
-  els.day2.classList.toggle("active", state.activeDay === 2);
+  renderDayTabs();
   els.title.textContent = `Day ${state.activeDay}`;
   els.phase.textContent = `Week ${state.activeWeek} · ${phase.name}`;
   els.note.textContent = phase.note;
   els.list.textContent = "";
-  els.copyPrevious.disabled = state.activeWeek <= 1 || !activeCustomExercises(state.activeWeek - 1, state.activeDay).length;
+  const canCopyPreviousLifts = previousWeekHasDay(state.activeWeek, state.activeDay);
+  els.copyPrevious.hidden = !canCopyPreviousLifts;
+  els.copyPrevious.disabled = !canCopyPreviousLifts;
+  els.copySchedule.hidden = state.activeWeek <= 1;
+  els.copySchedule.disabled = state.activeWeek <= 1;
+  els.removeDay.hidden = !canRemoveActiveDay();
+  els.removeDay.disabled = !canRemoveActiveDay();
   if (!els.customStatus.textContent) {
     els.customStatus.textContent = "";
+  }
+
+  if (!workout.length) {
+    const empty = document.createElement("div");
+    empty.className = "empty-day";
+    empty.innerHTML = `
+      <h2>No lifts yet</h2>
+      <p>Add your first lift for this day.</p>
+    `;
+    els.list.append(empty);
   }
 
   workout.forEach((ex) => {
@@ -620,6 +740,51 @@ function render() {
   renderHistory();
 }
 
+function renderDayTabs() {
+  const days = getDaysForWeek();
+  els.dayTabs.textContent = "";
+  days.forEach((day) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.setAttribute("role", "tab");
+    button.className = `day-tab${day === state.activeDay ? " active" : ""}`;
+    button.dataset.day = String(day);
+    button.textContent = `Day ${day}`;
+    button.ariaSelected = String(day === state.activeDay);
+    button.addEventListener("click", () => {
+      state.activeDay = day;
+      activeEditExerciseId = null;
+      render();
+    });
+    els.dayTabs.append(button);
+  });
+
+  const addButton = document.createElement("button");
+  addButton.type = "button";
+  addButton.className = "add-day-button";
+  addButton.textContent = "+";
+  addButton.title = days.length >= 7 ? "Maximum of 7 days per week" : "Add day";
+  addButton.ariaLabel = days.length >= 7 ? "Maximum of 7 days per week" : "Add day";
+  addButton.disabled = days.length >= 7;
+  addButton.addEventListener("click", addDayToWeek);
+  els.dayTabs.append(addButton);
+  window.requestAnimationFrame(() => {
+    centerActiveDayTab();
+    updateDayTabOverflow();
+  });
+}
+
+function centerActiveDayTab() {
+  const activeTab = els.dayTabs.querySelector(".day-tab.active");
+  activeTab?.scrollIntoView({ block: "nearest", inline: "center" });
+}
+
+function updateDayTabOverflow() {
+  const maxScroll = els.dayTabs.scrollWidth - els.dayTabs.clientWidth;
+  els.dayTabs.classList.toggle("has-overflow-left", els.dayTabs.scrollLeft > 2);
+  els.dayTabs.classList.toggle("has-overflow-right", maxScroll - els.dayTabs.scrollLeft > 2);
+}
+
 function renderSummary() {
   const session = activeSession();
   const listedSets = exercisesForDay(session.week, session.day)
@@ -628,8 +793,8 @@ function renderSummary() {
   els.prs.textContent = countSubmittedSessions();
 
   const hasLoggedWork = hasRecommendationData(session);
-  els.submit.disabled = session.submitted;
-  els.submit.classList.toggle("needs-data", !hasLoggedWork && !session.submitted);
+  els.submit.disabled = session.submitted || listedSets === 0;
+  els.submit.classList.toggle("needs-data", listedSets > 0 && !hasLoggedWork && !session.submitted);
 }
 
 function countSubmittedSessions() {
@@ -737,6 +902,27 @@ function setLayoutOrder(layout, order) {
     ...extraIds,
     ...hiddenIds.filter((hiddenId) => !order.includes(hiddenId) && !extraIds.includes(hiddenId))
   ];
+}
+
+function previousWeekHasDay(week, day) {
+  return week > 1 && getDaysForWeek(week - 1).includes(day);
+}
+
+function exerciseToCustomCopy(ex, index, visibleCount) {
+  const setRows = expandedSets(ex).map((set) => ({
+    type: set.type,
+    reps: set.reps
+  }));
+  return normalizeCustomExercise({
+    id: makeId(),
+    name: ex.name,
+    category: ex.category === "lift" || ex.category === "lower" || ex.category === "upper" ? "lift" : "accessory",
+    sourceId: ex.sourceId || ex.id,
+    createdAt: new Date().toISOString(),
+    deletedAt: null,
+    order: visibleCount + index,
+    setRows
+  }, visibleCount + index);
 }
 
 function showCustomForm() {
@@ -886,25 +1072,51 @@ function copyPreviousWeekCustomExercises() {
     return;
   }
 
-  const previous = activeCustomExercises(state.activeWeek - 1, state.activeDay);
-  if (!previous.length) {
-    els.customStatus.textContent = `No custom lifts found for Week ${state.activeWeek - 1}, Day ${state.activeDay}.`;
+  if (!previousWeekHasDay(state.activeWeek, state.activeDay)) {
+    els.customStatus.textContent = `No Day ${state.activeDay} found in Week ${state.activeWeek - 1}.`;
     return;
   }
 
+  const previous = exercisesForDay(state.activeWeek - 1, state.activeDay);
+  if (!previous.length) {
+    els.customStatus.textContent = `No lifts found for Week ${state.activeWeek - 1}, Day ${state.activeDay}.`;
+    return;
+  }
+
+  const currentDefaults = new Set((PLAN[state.activeDay] || []).map((ex) => ex.id));
+  const currentSources = new Set(exercisesForDay().map((ex) => ex.sourceId || ex.id));
   const list = customExercisesFor();
   const visibleCount = list.filter((item) => !item.deletedAt).length;
-  const copied = previous.map((item, index) => normalizeCustomExercise({
-    ...item,
-    id: makeId(),
-    sourceId: item.sourceId || item.id,
-    createdAt: new Date().toISOString(),
-    deletedAt: null,
-    order: visibleCount + index
-  }, list.length + index));
+
+  const copied = previous
+    .filter((ex) => !currentDefaults.has(ex.sourceId || ex.id) && !currentSources.has(ex.sourceId || ex.id))
+    .map((ex, index) => exerciseToCustomCopy(ex, index, visibleCount));
+
+  if (!copied.length) {
+    els.customStatus.textContent = `Week ${state.activeWeek}, Day ${state.activeDay} already has last week's lifts.`;
+    return;
+  }
+
   list.push(...copied);
   normalizeCustomOrder(list);
-  els.customStatus.textContent = `${copied.length} custom ${copied.length === 1 ? "lift" : "lifts"} copied from Week ${state.activeWeek - 1}.`;
+  els.customStatus.textContent = `${copied.length} ${copied.length === 1 ? "lift" : "lifts"} copied from Week ${state.activeWeek - 1}, Day ${state.activeDay}.`;
+  saveState();
+  render();
+}
+
+function copyPreviousWeekSchedule() {
+  if (state.activeWeek <= 1) {
+    els.customStatus.textContent = "There is no previous week schedule to copy.";
+    return;
+  }
+
+  const previousDays = getDaysForWeek(state.activeWeek - 1);
+  setDaysForWeek(state.activeWeek, previousDays);
+  if (!previousDays.includes(state.activeDay)) {
+    state.activeDay = previousDays[0];
+  }
+  activeEditExerciseId = null;
+  els.customStatus.textContent = `Week ${state.activeWeek} schedule copied from Week ${state.activeWeek - 1}.`;
   saveState();
   render();
 }
@@ -957,6 +1169,12 @@ function validateSession(session) {
 
 function submitWorkout() {
   const session = activeSession();
+  const workout = exercisesForDay();
+  if (!workout.length) {
+    els.customStatus.textContent = `Add at least one lift before submitting Week ${state.activeWeek}, Day ${state.activeDay}.`;
+    return;
+  }
+
   if (!validateSession(session)) {
     const firstError = Object.keys(session.validation)[0];
     state.focusValidationKey = firstError;
@@ -970,8 +1188,10 @@ function submitWorkout() {
   session.submittedAt = new Date().toISOString();
   session.date = session.submittedAt;
 
-  if (state.activeDay === 1) {
-    state.activeDay = 2;
+  const days = getDaysForWeek();
+  const dayIndex = days.indexOf(state.activeDay);
+  if (dayIndex >= 0 && dayIndex < days.length - 1) {
+    state.activeDay = days[dayIndex + 1];
   } else {
     state.activeDay = 1;
     state.activeWeek += 1;
@@ -982,7 +1202,7 @@ function submitWorkout() {
 
 function exportData() {
   const backup = {
-    app: "Two Day Strength",
+    app: "Strength Tracker",
     version: 1,
     exportedAt: new Date().toISOString(),
     state
@@ -1029,33 +1249,36 @@ function clearTodayData() {
 
 els.previousWeek.addEventListener("click", () => {
   state.activeWeek = Math.max(1, state.activeWeek - 1);
+  ensureActiveDayForWeek();
   activeEditExerciseId = null;
   render();
 });
 els.nextWeek.addEventListener("click", () => {
   state.activeWeek += 1;
+  ensureActiveDayForWeek();
   activeEditExerciseId = null;
-  render();
-});
-els.day1.addEventListener("click", () => {
-  state.activeDay = 1;
-  render();
-});
-els.day2.addEventListener("click", () => {
-  state.activeDay = 2;
   render();
 });
 els.submit.addEventListener("click", submitWorkout);
 els.addCustom.addEventListener("click", showCustomForm);
+els.removeDay.addEventListener("click", openRemoveDayDialog);
 els.cancelCustom.addEventListener("click", hideCustomForm);
 els.saveCustom.addEventListener("click", addCustomExercise);
 els.addCustomSet.addEventListener("click", addCustomSetRow);
 els.copyPrevious.addEventListener("click", copyPreviousWeekCustomExercises);
+els.copySchedule.addEventListener("click", copyPreviousWeekSchedule);
 els.confirmDelete.addEventListener("click", (event) => {
   event.preventDefault();
   els.deleteDialog.close();
   deletePendingExercise();
 });
+els.confirmRemoveDay.addEventListener("click", (event) => {
+  event.preventDefault();
+  els.removeDayDialog.close();
+  removeActiveDay();
+});
+els.dayTabs.addEventListener("scroll", updateDayTabOverflow, { passive: true });
+window.addEventListener("resize", updateDayTabOverflow);
 els.exportData.addEventListener("click", exportData);
 els.importData.addEventListener("click", restoreData);
 els.clearData.addEventListener("click", clearTodayData);

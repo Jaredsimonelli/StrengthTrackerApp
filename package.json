@@ -1,8 +1,8 @@
 {
-  "name": "two-day-strength-tracker",
+  "name": "strength-tracker",
   "version": "1.0.0",
   "private": true,
-  "description": "Offline-first two day strength workout tracker PWA.",
+  "description": "Offline-first flexible strength workout tracker PWA.",
   "scripts": {
     "start": "node server.js"
   }

@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <meta name="theme-color" content="#1d5f63">
-    <title>Two Day Strength Tracker</title>
+    <title>Strength Tracker</title>
     <link rel="manifest" href="manifest.json">
     <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
     <link rel="stylesheet" href="styles.css">
@@ -13,7 +13,7 @@
     <header class="app-header">
       <div>
         <p class="eyebrow">Local strength log</p>
-        <h1>Two Day Strength</h1>
+        <h1>Strength Tracker</h1>
       </div>
       <button class="icon-button" id="installButton" type="button" title="Install app" hidden>+</button>
     </header>
@@ -28,10 +28,7 @@
             <button id="nextWeekButton" type="button" aria-label="Next week">›</button>
           </div>
         </div>
-        <div class="segmented" role="tablist" aria-label="Workout day">
-          <button id="day1Button" type="button">Day 1</button>
-          <button id="day2Button" type="button">Day 2</button>
-        </div>
+        <div id="dayTabs" class="day-tabs" role="tablist" aria-label="Workout day"></div>
       </section>
 
       <section class="today-panel">
@@ -46,7 +43,9 @@
 
       <section class="custom-tools" aria-label="Custom lift tools">
         <button id="addCustomButton" type="button">+ Add Lift</button>
-        <button id="copyPreviousButton" type="button">Copy Last Week</button>
+        <button id="removeDayButton" type="button" hidden>Remove Day</button>
+        <button id="copyPreviousButton" type="button">Copy Last Week's Lifts</button>
+        <button id="copyScheduleButton" type="button">Copy Last Week's Schedule</button>
         <p id="customStatus" aria-live="polite"></p>
       </section>
 
@@ -138,6 +137,17 @@
         <div class="dialog-actions">
           <button id="cancelDeleteButton" value="cancel" type="submit">Cancel</button>
           <button id="confirmDeleteButton" value="delete" type="submit">Delete</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="removeDayDialog" class="confirm-dialog">
+      <form method="dialog">
+        <h2>Remove day?</h2>
+        <p id="removeDayMessage">This removes this day from the current week only.</p>
+        <div class="dialog-actions">
+          <button value="cancel" type="submit">Cancel</button>
+          <button id="confirmRemoveDayButton" value="delete" type="submit">Remove Day</button>
         </div>
       </form>
     </dialog>

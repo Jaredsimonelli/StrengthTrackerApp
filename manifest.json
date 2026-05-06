@@ -1,7 +1,7 @@
 {
-  "name": "Two Day Strength Tracker",
+  "name": "Strength Tracker",
   "short_name": "Strength",
-  "description": "A simple local workout tracker for a two day strength plan.",
+  "description": "A simple local workout tracker for flexible strength plans.",
   "start_url": ".",
   "display": "standalone",
   "background_color": "#f7f5ef",
