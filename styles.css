@@ -106,7 +106,7 @@ main {
 
 .control-band {
   display: grid;
-  grid-template-columns: 96px 1fr;
+  grid-template-columns: 120px 1fr;
   gap: 10px;
   align-items: end;
 }
@@ -128,6 +128,46 @@ select {
   padding: 10px 11px;
   color: var(--ink);
   background: white;
+}
+
+.week-stepper {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.week-stepper-control {
+  display: grid;
+  grid-template-columns: 34px 1fr 34px;
+  align-items: center;
+  min-height: 44px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+.week-stepper-control button {
+  min-height: 44px;
+  border: 0;
+  background: transparent;
+  color: var(--green);
+  font-size: 1.35rem;
+  font-weight: 900;
+}
+
+.week-stepper-control button:disabled {
+  color: #b8bfbb;
+  cursor: default;
+}
+
+.week-stepper-control strong {
+  color: var(--ink);
+  font-size: 0.94rem;
+  font-weight: 900;
+  text-align: center;
 }
 
 select {
@@ -195,6 +235,7 @@ select option {
 }
 
 .exercise-card {
+  position: relative;
   overflow: hidden;
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -207,16 +248,9 @@ select option {
   width: 100%;
   min-height: 66px;
   border: 0;
-  padding: 13px 14px;
+  padding: 13px 58px 13px 14px;
   text-align: left;
   background: transparent;
-}
-
-.exercise-head-row {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 10px;
-  align-items: start;
 }
 
 .exercise-actions {
@@ -242,7 +276,30 @@ select option {
   color: var(--red);
 }
 
-.custom-card-actions {
+.exercise-edit-button {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: white;
+  color: var(--green);
+  font-size: 1rem;
+  font-weight: 900;
+}
+
+.exercise-edit-button:hover,
+.exercise-edit-button:focus-visible {
+  border-color: var(--green);
+  outline: 0;
+  background: var(--green-2);
+}
+
+.exercise-manage-actions {
   display: grid;
   grid-template-columns: repeat(3, 44px);
   gap: 6px;
@@ -430,7 +487,7 @@ select option {
 }
 
 .submit-band {
-  padding: 4px 0 18px;
+  padding: 4px 0 10px;
 }
 
 .submit-band button {
@@ -448,14 +505,32 @@ select option {
   color: #5e4935;
 }
 
-.submit-band button.attention {
-  outline: 3px solid rgba(186, 81, 71, 0.28);
-}
-
 .submit-band button:disabled {
   cursor: default;
   background: var(--green-2);
   color: var(--green);
+}
+
+.clear-today-band {
+  display: grid;
+  justify-items: center;
+  padding: 0 0 18px;
+}
+
+.clear-today-band button {
+  min-height: 40px;
+  border: 1px solid rgba(186, 81, 71, 0.28);
+  border-radius: 8px;
+  padding: 0 14px;
+  background: transparent;
+  color: var(--red);
+  font-size: 0.82rem;
+  font-weight: 900;
+}
+
+.clear-today-band button:focus-visible {
+  outline: 2px solid rgba(186, 81, 71, 0.28);
+  outline-offset: 2px;
 }
 
 .custom-tools {
@@ -685,10 +760,44 @@ select option {
   color: white;
 }
 
+.data-section details {
+  border-top: 1px solid rgba(217, 222, 216, 0.7);
+  padding-top: 10px;
+}
+
+.data-section summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 40px;
+  color: var(--ink);
+  font-size: 1.05rem;
+  font-weight: 900;
+  list-style: none;
+  cursor: pointer;
+}
+
+.data-section summary::-webkit-details-marker {
+  display: none;
+}
+
+.data-section summary::after {
+  content: "⌄";
+  color: var(--green);
+  font-size: 1rem;
+  font-weight: 900;
+  transition: transform 160ms ease;
+}
+
+.data-section details[open] summary::after {
+  transform: rotate(180deg);
+}
+
 .data-actions {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(2, 1fr);
   gap: 10px;
+  padding-top: 8px;
 }
 
 .data-actions button {
@@ -703,10 +812,6 @@ select option {
 .data-actions button:focus-visible {
   outline: 2px solid rgba(29, 95, 99, 0.28);
   outline-offset: 2px;
-}
-
-#clearDataButton {
-  color: var(--red);
 }
 
 .data-status {
@@ -763,7 +868,7 @@ select option {
     position: sticky;
     top: 0;
     z-index: 20;
-    grid-template-columns: minmax(78px, 92px) 1fr;
+    grid-template-columns: minmax(112px, 128px) 1fr;
     margin: 0 -14px 14px;
     padding: 8px 14px 10px;
     background: rgba(247, 245, 239, 0.94);
@@ -772,7 +877,7 @@ select option {
     backdrop-filter: blur(16px);
   }
 
-  .control-band label {
+  .week-stepper {
     gap: 4px;
     font-size: 0.72rem;
   }

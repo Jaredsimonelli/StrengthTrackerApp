@@ -20,10 +20,14 @@
 
     <main>
       <section class="control-band">
-        <label>
-          Week
-          <input id="weekInput" type="number" min="1" step="1" inputmode="numeric">
-        </label>
+        <div class="week-stepper" aria-label="Workout week">
+          <span>Week</span>
+          <div class="week-stepper-control">
+            <button id="previousWeekButton" type="button" aria-label="Previous week">‹</button>
+            <strong id="weekLabel">1</strong>
+            <button id="nextWeekButton" type="button" aria-label="Next week">›</button>
+          </div>
+        </div>
         <div class="segmented" role="tablist" aria-label="Workout day">
           <button id="day1Button" type="button">Day 1</button>
           <button id="day2Button" type="button">Day 2</button>
@@ -94,20 +98,24 @@
         <button id="submitWorkoutButton" type="button">Submit Workout</button>
       </section>
 
+      <section class="clear-today-band">
+        <button id="clearDataButton" type="button">Clear Today's Data</button>
+      </section>
+
       <section class="plain-section">
         <h2>Weeks</h2>
         <div id="historyList" class="history-list"></div>
       </section>
 
-      <section class="plain-section">
-        <h2>Data</h2>
-        <div class="data-actions">
-          <button id="exportDataButton" type="button">Backup Data</button>
-          <button id="importDataButton" type="button">Restore Data</button>
-          <button id="clearDataButton" type="button">Clear Data</button>
-          <input id="importDataInput" type="file" accept="application/json,.json" hidden>
-        </div>
-        <p id="dataStatus" class="data-status" aria-live="polite"></p>
+      <section class="plain-section data-section">
+        <details>
+          <summary>Data</summary>
+          <div class="data-actions">
+            <button id="exportDataButton" type="button">Backup Data</button>
+            <button id="importDataButton" type="button">Restore Data</button>
+          </div>
+          <p id="dataStatus" class="data-status" aria-live="polite"></p>
+        </details>
       </section>
     </main>
 
@@ -125,7 +133,7 @@
 
     <dialog id="deleteCustomDialog" class="confirm-dialog">
       <form method="dialog">
-        <h2>Delete lift?</h2>
+        <h2>Remove lift?</h2>
         <p id="deleteCustomMessage">This removes the lift from this week only.</p>
         <div class="dialog-actions">
           <button id="cancelDeleteButton" value="cancel" type="submit">Cancel</button>

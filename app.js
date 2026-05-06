@@ -20,13 +20,17 @@ const PLAN = {
 };
 
 const STORAGE_KEY = "twoDayStrengthTracker.data";
+const BACKUP_KEY = "twoDayStrengthTracker.latestBackup";
 const LEGACY_STORAGE_KEYS = Array.from({ length: 14 }, (_, index) => `twoDayStrengthTracker.v${14 - index}`);
 const state = loadState();
 let deferredInstallPrompt = null;
-let pendingDeleteCustomId = null;
+let pendingDeleteExerciseId = null;
+let activeEditExerciseId = null;
 
 const els = {
-  week: document.querySelector("#weekInput"),
+  weekLabel: document.querySelector("#weekLabel"),
+  previousWeek: document.querySelector("#previousWeekButton"),
+  nextWeek: document.querySelector("#nextWeekButton"),
   day1: document.querySelector("#day1Button"),
   day2: document.querySelector("#day2Button"),
   title: document.querySelector("#workoutTitle"),
@@ -53,7 +57,6 @@ const els = {
   exportData: document.querySelector("#exportDataButton"),
   importData: document.querySelector("#importDataButton"),
   clearData: document.querySelector("#clearDataButton"),
-  importFile: document.querySelector("#importDataInput"),
   dataStatus: document.querySelector("#dataStatus"),
   install: document.querySelector("#installButton"),
   template: document.querySelector("#exerciseTemplate")
@@ -102,7 +105,9 @@ function defaultState() {
     startedOn: today.toISOString().slice(0, 10),
     sessions: {},
     collapsed: {},
-    customExercises: {}
+    customExercises: {},
+    dayLayouts: {},
+    defaultDayLayouts: {}
   };
 }
 
@@ -115,7 +120,9 @@ function normalizeState(saved) {
     activeWeek: Math.max(1, Number(saved.activeWeek || fallback.activeWeek)),
     sessions: saved.sessions && typeof saved.sessions === "object" ? saved.sessions : {},
     collapsed: saved.collapsed && typeof saved.collapsed === "object" ? saved.collapsed : {},
-    customExercises: saved.customExercises && typeof saved.customExercises === "object" ? saved.customExercises : {}
+    customExercises: saved.customExercises && typeof saved.customExercises === "object" ? saved.customExercises : {},
+    dayLayouts: saved.dayLayouts && typeof saved.dayLayouts === "object" ? saved.dayLayouts : {},
+    defaultDayLayouts: saved.defaultDayLayouts && typeof saved.defaultDayLayouts === "object" ? saved.defaultDayLayouts : {}
   };
 
   Object.values(next.sessions).forEach((session) => {
@@ -134,7 +141,22 @@ function normalizeState(saved) {
     next.customExercises[key] = next.customExercises[key].map((item, index) => normalizeCustomExercise(item, index));
   });
 
+  Object.keys(next.dayLayouts).forEach((key) => {
+    next.dayLayouts[key] = normalizeLayout(next.dayLayouts[key]);
+  });
+
+  Object.keys(next.defaultDayLayouts).forEach((key) => {
+    next.defaultDayLayouts[key] = normalizeLayout(next.defaultDayLayouts[key]);
+  });
+
   return next;
+}
+
+function normalizeLayout(layout) {
+  return {
+    order: Array.isArray(layout?.order) ? layout.order.filter(Boolean) : [],
+    hidden: layout?.hidden && typeof layout.hidden === "object" ? layout.hidden : {}
+  };
 }
 
 function saveState() {
@@ -221,8 +243,42 @@ function activeCustomExercises(week = state.activeWeek, day = state.activeDay) {
   return customExercisesFor(week, day).filter((item) => !item.deletedAt);
 }
 
-function exercisesForDay(week = state.activeWeek, day = state.activeDay) {
+function defaultLayoutForDay(day = state.activeDay) {
+  const key = `d${day}`;
+  state.defaultDayLayouts ||= {};
+  state.defaultDayLayouts[key] ||= { order: [], hidden: {} };
+  state.defaultDayLayouts[key] = normalizeLayout(state.defaultDayLayouts[key]);
+  return state.defaultDayLayouts[key];
+}
+
+function layoutForDay(week = state.activeWeek, day = state.activeDay) {
+  const key = sessionKey(week, day);
+  state.dayLayouts ||= {};
+  state.dayLayouts[key] ||= {
+    order: [...defaultLayoutForDay(day).order],
+    hidden: { ...defaultLayoutForDay(day).hidden }
+  };
+  state.dayLayouts[key] = normalizeLayout(state.dayLayouts[key]);
+  return state.dayLayouts[key];
+}
+
+function exerciseOrderKey(ex) {
+  return ex.custom ? ex.sourceId || ex.id : ex.id;
+}
+
+function baseExercisesForDay(week = state.activeWeek, day = state.activeDay) {
   return [...PLAN[day], ...activeCustomExercises(week, day)];
+}
+
+function exercisesForDay(week = state.activeWeek, day = state.activeDay) {
+  const layout = layoutForDay(week, day);
+  const base = baseExercisesForDay(week, day).filter((ex) => !layout.hidden[ex.id] && !layout.hidden[exerciseOrderKey(ex)]);
+  const ids = new Set(base.flatMap((ex) => [ex.id, exerciseOrderKey(ex)]));
+  const order = layout.order.filter((id) => ids.has(id));
+  const missing = base.map((ex) => exerciseOrderKey(ex)).filter((id) => !order.includes(id));
+  layout.order = [...order, ...missing];
+  const byId = new Map(base.flatMap((ex) => [[ex.id, ex], [exerciseOrderKey(ex), ex]]));
+  return layout.order.map((id) => byId.get(id)).filter(Boolean);
 }
 
 function normalizeCustomOrder(list) {
@@ -396,13 +452,16 @@ function firstWorkingTarget(ex) {
 }
 
 function render() {
-  saveState();
   const phase = weekPhase(state.activeWeek);
   const workout = exercisesForDay();
+  saveState();
   const session = activeSession();
-  const customList = activeCustomExercises();
+  if (activeEditExerciseId && !workout.some((ex) => ex.id === activeEditExerciseId)) {
+    activeEditExerciseId = null;
+  }
 
-  els.week.value = state.activeWeek;
+  els.weekLabel.textContent = state.activeWeek;
+  els.previousWeek.disabled = state.activeWeek <= 1;
   els.day1.classList.toggle("active", state.activeDay === 1);
   els.day2.classList.toggle("active", state.activeDay === 2);
   els.title.textContent = `Day ${state.activeDay}`;
@@ -436,14 +495,26 @@ function render() {
       render();
     });
 
-    if (ex.custom) {
+    const editButton = document.createElement("button");
+    editButton.type = "button";
+    editButton.className = "exercise-edit-button";
+    editButton.textContent = "✎";
+    editButton.title = activeEditExerciseId === ex.id ? "Close lift actions" : "Edit lift";
+    editButton.ariaLabel = activeEditExerciseId === ex.id ? `Close actions for ${ex.name}` : `Edit ${ex.name}`;
+    editButton.addEventListener("click", () => {
+      activeEditExerciseId = activeEditExerciseId === ex.id ? null : ex.id;
+      render();
+    });
+    node.append(editButton);
+
+    if (activeEditExerciseId === ex.id) {
       const actions = document.createElement("div");
-      actions.className = "exercise-actions custom-card-actions";
-      const index = customList.findIndex((item) => item.id === ex.id);
+      actions.className = "exercise-actions exercise-manage-actions";
+      const index = workout.findIndex((item) => item.id === ex.id);
       actions.append(
-        customActionButton("↑", "Move lift up", () => moveCustomExercise(ex.id, -1), index <= 0),
-        customActionButton("↓", "Move lift down", () => moveCustomExercise(ex.id, 1), index === customList.length - 1),
-        customActionButton("×", "Delete lift", () => openDeleteCustomDialog(ex), false, "delete-action")
+        customActionButton("↑", "Move lift up", () => moveExercise(ex.id, -1), index <= 0),
+        customActionButton("↓", "Move lift down", () => moveExercise(ex.id, 1), index === workout.length - 1),
+        customActionButton("×", "Remove lift", () => openDeleteExerciseDialog(ex), false, "delete-action")
       );
       node.insertBefore(actions, sets);
     }
@@ -639,6 +710,35 @@ function customActionButton(text, label, onClick, disabled = false, className = 
   return button;
 }
 
+function moveExercise(id, direction) {
+  const workout = exercisesForDay();
+  const index = workout.findIndex((item) => item.id === id);
+  const nextIndex = index + direction;
+  if (index < 0 || nextIndex < 0 || nextIndex >= workout.length) return;
+
+  const order = workout.map((item) => exerciseOrderKey(item));
+  [order[index], order[nextIndex]] = [order[nextIndex], order[index]];
+  setLayoutOrder(defaultLayoutForDay(), order);
+  Object.entries(state.dayLayouts || {}).forEach(([key, layout]) => {
+    if (key.endsWith(`-d${state.activeDay}`)) {
+      setLayoutOrder(layout, order);
+    }
+  });
+  activeEditExerciseId = id;
+  saveState();
+  render();
+}
+
+function setLayoutOrder(layout, order) {
+  const extraIds = (layout.order || []).filter((id) => !order.includes(id));
+  const hiddenIds = Object.keys(layout.hidden || {}).filter((hiddenId) => layout.hidden[hiddenId]);
+  layout.order = [
+    ...order,
+    ...extraIds,
+    ...hiddenIds.filter((hiddenId) => !order.includes(hiddenId) && !extraIds.includes(hiddenId))
+  ];
+}
+
 function showCustomForm() {
   els.customForm.hidden = false;
   els.customStatus.textContent = "";
@@ -751,37 +851,31 @@ function addCustomSetRow() {
   renderCustomSetFormRows(rows);
 }
 
-function moveCustomExercise(id, direction) {
-  const list = customExercisesFor();
-  const visible = list.filter((item) => !item.deletedAt);
-  const index = visible.findIndex((item) => item.id === id);
-  const nextIndex = index + direction;
-  if (index < 0 || nextIndex < 0 || nextIndex >= visible.length) return;
-  const currentOrder = visible[index].order;
-  visible[index].order = visible[nextIndex].order;
-  visible[nextIndex].order = currentOrder;
-  normalizeCustomOrder(list.sort((a, b) => a.order - b.order));
-  saveState();
-  render();
-}
-
-function openDeleteCustomDialog(ex) {
-  pendingDeleteCustomId = ex.id;
+function openDeleteExerciseDialog(ex) {
+  pendingDeleteExerciseId = ex.id;
   els.deleteMessage.textContent = `This removes ${ex.name} from Week ${state.activeWeek}, Day ${state.activeDay} only.`;
   els.deleteDialog.showModal();
 }
 
-function deletePendingCustomExercise() {
-  if (!pendingDeleteCustomId) return;
+function deletePendingExercise() {
+  if (!pendingDeleteExerciseId) return;
   const list = customExercisesFor();
-  const item = list.find((custom) => custom.id === pendingDeleteCustomId);
+  const item = list.find((custom) => custom.id === pendingDeleteExerciseId);
+  const workoutItem = exercisesForDay().find((ex) => ex.id === pendingDeleteExerciseId) || item;
+
   if (item) {
     item.deletedAt = new Date().toISOString();
     delete activeSession().sets[item.id];
     normalizeCustomOrder(list);
     els.customStatus.textContent = `${item.name} removed from this week only.`;
+  } else {
+    const layout = layoutForDay();
+    layout.hidden[pendingDeleteExerciseId] = true;
+    delete activeSession().sets[pendingDeleteExerciseId];
+    els.customStatus.textContent = `${workoutItem?.name || "Lift"} removed from this week and day only.`;
   }
-  pendingDeleteCustomId = null;
+  activeEditExerciseId = null;
+  pendingDeleteExerciseId = null;
   saveState();
   render();
 }
@@ -893,51 +987,54 @@ function exportData() {
     exportedAt: new Date().toISOString(),
     state
   };
-  const blob = new Blob([JSON.stringify(backup, null, 2)], { type: "application/json" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  const date = new Date().toISOString().slice(0, 10);
-  link.href = url;
-  link.download = `two-day-strength-backup-${date}.json`;
-  document.body.append(link);
-  link.click();
-  link.remove();
-  URL.revokeObjectURL(url);
-  els.dataStatus.textContent = "Backup file created.";
+  localStorage.setItem(BACKUP_KEY, JSON.stringify(backup));
+  els.dataStatus.textContent = `Latest backup saved in this app at ${new Date(backup.exportedAt).toLocaleString()}.`;
 }
 
-async function importDataFromFile(file) {
-  if (!file) return;
+function restoreData() {
   try {
-    const backup = JSON.parse(await file.text());
+    const backup = safeParse(localStorage.getItem(BACKUP_KEY));
     const importedState = backup.state || backup;
     if (!importedState || typeof importedState !== "object" || !importedState.sessions) {
       throw new Error("Invalid backup");
     }
 
-    const shouldRestore = window.confirm("Restore this backup? It will replace the workout data currently saved on this device.");
+    const exportedAt = backup.exportedAt ? ` from ${new Date(backup.exportedAt).toLocaleString()}` : "";
+    const shouldRestore = window.confirm(`Restore the latest backup${exportedAt}? It will replace the workout data currently saved on this device.`);
     if (!shouldRestore) {
       els.dataStatus.textContent = "Restore canceled.";
       return;
     }
 
     replaceState(importedState);
-    els.dataStatus.textContent = "Backup restored.";
+    els.dataStatus.textContent = "Latest backup restored.";
   } catch {
-    els.dataStatus.textContent = "That backup file could not be restored.";
-  } finally {
-    els.importFile.value = "";
+    els.dataStatus.textContent = "No saved backup found in this app.";
   }
 }
 
-function clearData() {
-  [STORAGE_KEY, ...LEGACY_STORAGE_KEYS].forEach((key) => localStorage.removeItem(key));
-  replaceState(defaultState());
-  els.dataStatus.textContent = "Workout data cleared.";
+function clearTodayData() {
+  const shouldClear = window.confirm(`Clear entered weights for Week ${state.activeWeek}, Day ${state.activeDay}? Custom lifts and backups are kept.`);
+  if (!shouldClear) {
+    els.customStatus.textContent = "Clear canceled.";
+    return;
+  }
+
+  delete state.sessions[sessionKey()];
+  activeEditExerciseId = null;
+  saveState();
+  render();
+  els.customStatus.textContent = `Week ${state.activeWeek}, Day ${state.activeDay} data cleared.`;
 }
 
-els.week.addEventListener("input", () => {
-  state.activeWeek = Math.max(1, Number(els.week.value || 1));
+els.previousWeek.addEventListener("click", () => {
+  state.activeWeek = Math.max(1, state.activeWeek - 1);
+  activeEditExerciseId = null;
+  render();
+});
+els.nextWeek.addEventListener("click", () => {
+  state.activeWeek += 1;
+  activeEditExerciseId = null;
   render();
 });
 els.day1.addEventListener("click", () => {
@@ -957,16 +1054,11 @@ els.copyPrevious.addEventListener("click", copyPreviousWeekCustomExercises);
 els.confirmDelete.addEventListener("click", (event) => {
   event.preventDefault();
   els.deleteDialog.close();
-  deletePendingCustomExercise();
+  deletePendingExercise();
 });
 els.exportData.addEventListener("click", exportData);
-els.importData.addEventListener("click", () => {
-  els.importFile.click();
-});
-els.importFile.addEventListener("change", () => {
-  importDataFromFile(els.importFile.files[0]);
-});
-els.clearData.addEventListener("click", clearData);
+els.importData.addEventListener("click", restoreData);
+els.clearData.addEventListener("click", clearTodayData);
 
 window.addEventListener("beforeinstallprompt", (event) => {
   event.preventDefault();
